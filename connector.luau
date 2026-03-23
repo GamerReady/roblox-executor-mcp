@@ -155,7 +155,7 @@ local BaseBridge = {}; do
             end)
 
             local start = os.clock()
-            repeat task.wait(0.05) until response ~= nil or os.clock() - start > 2
+            repeat task.wait(0.05) until response ~= nil or os.clock() - start > 5
 
             if response == nil then
                 task.cancel(thread)
