@@ -46,6 +46,9 @@ let clientRegistry: Map<string, RobloxClient> = new Map();
 // Map ws → clientId for quick lookup on message/close
 let wsToClientId: Map<WebSocket, string> = new Map();
 
+// ─── Global Active Client ───────────────────────────────────────────────────────
+let activeClientId: string | undefined = undefined;
+
 // ─── Primary-mode state ─────────────────────────────────────────────────────────
 let httpServer: ReturnType<typeof createServer> | null = null;
 let wss: WebSocketServer | null = null;
@@ -1769,6 +1772,28 @@ function performScreenshot(pid?: number): ScreenshotResult {
 // ─── Tool registrations (work in both primary & secondary mode) ─────────────────
 
 server.registerTool(
+  "set-active-client",
+  {
+    title: "Set active Roblox client",
+    description: "Sets the active Roblox client to the provided clientId. Future tool calls will be routed to this client.",
+    inputSchema: z.object({
+      clientId: z.string().describe("The client ID to set as active. Use list-clients to get available client IDs."),
+    }),
+  },
+  async ({ clientId }) => {
+    activeClientId = clientId;
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Active client set to ${clientId}.`,
+        },
+      ],
+    };
+  }
+);
+
+server.registerTool(
   "list-clients",
   {
     title: "List connected Roblox clients",
@@ -1822,15 +1847,14 @@ server.registerTool(
         )
         .optional()
         .default(8),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ code, threadContext, clientId }) => {
+  async ({ code, threadContext }) => {
     console.error(`Executing code in thread ${threadContext}...`);
 
     const result = SendArbitraryDataToClient("execute", {
       source: `setthreadidentity(${threadContext})\n${code}`,
-    }, undefined, clientId);
+    }, undefined, activeClientId);
 
     if (result === null) {
       return NO_CLIENT_ERROR;
@@ -1868,10 +1892,9 @@ server.registerTool(
         )
         .optional()
         .default(8),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ filePath, threadContext, clientId }) => {
+  async ({ filePath, threadContext }) => {
     if (!fs.existsSync(filePath)) {
       return {
         content: [
@@ -1888,7 +1911,7 @@ server.registerTool(
 
     const result = SendArbitraryDataToClient("execute", {
       source: `setthreadidentity(${threadContext})\n${code}`,
-    }, undefined, clientId);
+    }, undefined, activeClientId);
 
     if (result === null) {
       return NO_CLIENT_ERROR;
@@ -1923,10 +1946,9 @@ server.registerTool(
         .string()
         .describe("The path to the script to get the content of. If passing a GC'd script proxy (e.g. <ScriptProxy: 1_316566>), use the literal angle brackets < > — do NOT HTML-encode them as &lt; or &gt;.")
         .optional(),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ scriptGetterSource, scriptPath, clientId }) => {
+  async ({ scriptGetterSource, scriptPath }) => {
     if (scriptGetterSource === undefined && scriptPath === undefined) {
       return {
         success: false,
@@ -1958,7 +1980,7 @@ server.registerTool(
           scriptGetterSource === undefined
             ? `return ${scriptPath}`
             : scriptGetterSource,
-      }, undefined, clientId);
+      }, undefined, activeClientId);
 
     if (toolCallId === null) {
       return NO_CLIENT_ERROR;
@@ -2011,15 +2033,14 @@ server.registerTool(
         )
         .optional()
         .default(8),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ code, threadContext, clientId }) => {
+  async ({ code, threadContext }) => {
     console.error(`Executing code in thread ${threadContext}...`);
 
     const toolCallId = SendArbitraryDataToClient("get-data-by-code", {
       source: `setthreadidentity(${threadContext});${code}`,
-    }, undefined, clientId);
+    }, undefined, activeClientId);
 
     if (toolCallId === null) {
       return NO_CLIENT_ERROR;
@@ -2076,14 +2097,13 @@ server.registerTool(
         .describe("The order of the logs to return (default: NewestFirst)")
         .optional()
         .default("NewestFirst"),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ limit, logsOrder, clientId }) => {
+  async ({ limit, logsOrder }) => {
     const toolCallId = SendArbitraryDataToClient("get-console-output", {
       limit,
       logsOrder,
-    }, undefined, clientId);
+    }, undefined, activeClientId);
 
     if (toolCallId === null) {
       return NO_CLIENT_ERROR;
@@ -2158,15 +2178,14 @@ COMBINING SELECTORS: Chain selectors for AND logic. Example: Part.Tagged[Anchore
         )
         .optional()
         .default(50),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ selector, root, limit, clientId }) => {
+  async ({ selector, root, limit }) => {
     const toolCallId = SendArbitraryDataToClient("search-instances", {
       selector,
       root,
       limit,
-    }, undefined, clientId);
+    }, undefined, activeClientId);
 
     if (toolCallId === null) {
       return NO_CLIENT_ERROR;
@@ -2237,14 +2256,13 @@ server.registerTool(
         )
         .optional()
         .default(20),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ query, limit, clientId }) => {
+  async ({ query, limit }) => {
     const toolCallId = SendArbitraryDataToClient("search-scripts-sources", {
       query,
       limit,
-    }, undefined, clientId);
+    }, undefined, activeClientId);
 
     if (toolCallId === null) {
       return NO_CLIENT_ERROR;
@@ -2290,11 +2308,10 @@ server.registerTool(
     description:
       "Retrieves basic information about the current game including PlaceId, GameId, PlaceVersion, and other metadata.",
     inputSchema: z.object({
-      clientId: clientIdSchema,
     }),
   },
-  async ({ clientId }: { clientId?: string }) => {
-    const toolCallId = SendArbitraryDataToClient("get-game-info", {}, undefined, clientId);
+  async () => {
+    const toolCallId = SendArbitraryDataToClient("get-game-info", {}, undefined, activeClientId);
 
     if (toolCallId === null) {
       return NO_CLIENT_ERROR;
@@ -2357,16 +2374,15 @@ server.registerTool(
         )
         .optional()
         .default(50),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ root, maxDepth, classFilter, maxChildren, clientId }) => {
+  async ({ root, maxDepth, classFilter, maxChildren }) => {
     const toolCallId = SendArbitraryDataToClient("get-descendants-tree", {
       root,
       maxDepth,
       classFilter: classFilter || "",
       maxChildren,
-    }, undefined, clientId);
+    }, undefined, activeClientId);
 
     if (toolCallId === null) {
       return NO_CLIENT_ERROR;
@@ -2411,15 +2427,14 @@ server.registerTool(
     description:
       "Loads the Cobalt remote spy if it is not already running. Cobalt hooks all RemoteEvents, RemoteFunctions, BindableEvents, BindableFunctions (both incoming and outgoing, including Actors) and logs their calls. Must be called before using get-remote-spy-logs. Returns the current status of Cobalt.",
     inputSchema: z.object({
-      clientId: clientIdSchema,
     }),
   },
-  async ({ clientId }) => {
+  async () => {
     const toolCallId = SendArbitraryDataToClient(
       "ensure-remote-spy",
       {},
       undefined,
-      clientId
+      activeClientId
     );
 
     if (toolCallId === null) {
@@ -2490,10 +2505,9 @@ server.registerTool(
         )
         .optional()
         .default(5),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ direction, remoteNameFilter, limit, maxCallsPerRemote, clientId }) => {
+  async ({ direction, remoteNameFilter, limit, maxCallsPerRemote }) => {
     const toolCallId = SendArbitraryDataToClient(
       "get-remote-spy-logs",
       {
@@ -2503,7 +2517,7 @@ server.registerTool(
         maxCallsPerRemote,
       },
       undefined,
-      clientId
+      activeClientId
     );
 
     if (toolCallId === null) {
@@ -2549,15 +2563,14 @@ server.registerTool(
     description:
       "Clears all captured remote spy logs from Cobalt. This removes all logged calls for every remote. Cobalt must be loaded first via ensure-remote-spy.",
     inputSchema: z.object({
-      clientId: clientIdSchema,
     }),
   },
-  async ({ clientId }) => {
+  async () => {
     const toolCallId = SendArbitraryDataToClient(
       "clear-remote-spy-logs",
       {},
       undefined,
-      clientId
+      activeClientId
     );
 
     if (toolCallId === null) {
@@ -2602,15 +2615,14 @@ server.registerTool(
         .describe("true to block, false to unblock")
         .optional()
         .default(true),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ remoteName, direction, shouldBlock, clientId }) => {
+  async ({ remoteName, direction, shouldBlock }) => {
     const toolCallId = SendArbitraryDataToClient(
       "block-remote",
       { remoteName, direction, shouldBlock },
       undefined,
-      clientId
+      activeClientId
     );
 
     if (toolCallId === null) {
@@ -2655,15 +2667,14 @@ server.registerTool(
         .describe("true to ignore, false to unignore")
         .optional()
         .default(true),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ remoteName, direction, shouldIgnore, clientId }) => {
+  async ({ remoteName, direction, shouldIgnore }) => {
     const toolCallId = SendArbitraryDataToClient(
       "ignore-remote",
       { remoteName, direction, shouldIgnore },
       undefined,
-      clientId
+      activeClientId
     );
 
     if (toolCallId === null) {
@@ -2708,10 +2719,9 @@ server.registerTool(
           "The PID (process ID) of the Roblox window to capture. If omitted and only one Roblox window exists, it is captured automatically. If multiple windows exist and no pid is provided, the tool returns a list of windows for disambiguation."
         )
         .optional(),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ pid, clientId }) => {
+  async ({ pid }) => {
     // ── Secondary mode: relay to primary via HTTP ──
     // Do this BEFORE the platform guard — a non-Windows secondary can still
     // forward to a Windows primary that does the actual capture.
@@ -2923,15 +2933,14 @@ server.registerTool(
         .describe("If true, simulates real keystrokes using VirtualInputManager / keypress. If false, directly sets the Text property.")
         .optional()
         .default(true),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ path, text, enter, useKeyPress, clientId }) => {
+  async ({ path, text, enter, useKeyPress }) => {
     const toolCallId = SendArbitraryDataToClient(
       "type-text-box",
       { path, text, string: text, enter, useKeyPress },
       undefined,
-      clientId
+      activeClientId
     );
 
     if (toolCallId === null) {
@@ -2971,15 +2980,14 @@ server.registerTool(
         .string()
         .describe("The specific signal to fire (e.g., 'Activated', 'MouseButton1Click'). If omitted, fires all standard click signals.")
         .optional(),
-      clientId: clientIdSchema,
     }),
   },
-  async ({ path, action, clientId }) => {
+  async ({ path, action }) => {
     const toolCallId = SendArbitraryDataToClient(
       "click-button",
       { path, action },
       undefined,
-      clientId
+      activeClientId
     );
 
     if (toolCallId === null) {
