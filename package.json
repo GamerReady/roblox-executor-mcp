@@ -16,6 +16,7 @@
     "build": "node scripts/clean-dist.mjs && tsc && node scripts/copy-assets.mjs",
     "install:harness": "node scripts/install-harnesses.mjs",
     "install:harnesses": "node scripts/install-harnesses.mjs",
+    "getscript": "node scripts/install-harnesses.mjs --get-script",
     "start": "node dist/index.js",
     "update": "node scripts/install-harnesses.mjs --update",
     "prepare": "npm run build"

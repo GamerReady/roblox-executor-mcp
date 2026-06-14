@@ -58,6 +58,7 @@ const ALL_HARNESSES = [
 const NON_INTERACTIVE = process.argv.includes("--yes") || process.argv.includes("-y");
 const DRY_RUN = process.argv.includes("--dry-run");
 const UPDATE_MODE = process.argv.includes("--update");
+const GET_SCRIPT_MODE = process.argv.includes("--get-script");
 const ASCII_MODE = process.platform === "win32" || process.argv.includes("--ascii");
 const PLAIN_MODE = process.argv.includes("--plain");
 if (PLAIN_MODE || process.env.NO_COLOR) {
@@ -72,6 +73,11 @@ main().catch((error) => {
 });
 
 async function main() {
+  if (GET_SCRIPT_MODE) {
+    await runGetScriptMode();
+    return;
+  }
+
   if (UPDATE_MODE) {
     await runUpdateMode();
     return;
@@ -153,6 +159,21 @@ async function main() {
     if (copied) log("ok", "Roblox loader copied to clipboard");
   }
   showCursor();
+}
+
+async function runGetScriptMode() {
+  const bridgeArgIndex = process.argv.indexOf("--bridge-url");
+  const bridgeUrl =
+    bridgeArgIndex !== -1 && process.argv[bridgeArgIndex + 1]
+      ? normalizeBridgeUrl(process.argv[bridgeArgIndex + 1])
+      : DEFAULT_BRIDGE_URL;
+  const loaderSnippet = buildLoaderSnippet(bridgeUrl);
+  console.log(loaderSnippet);
+  const copied = await copyToClipboard(loaderSnippet).catch((error) => {
+    log("warn", `Could not copy Roblox loader to clipboard: ${error.message || error}`);
+    return false;
+  });
+  if (copied) log("ok", "Roblox loader copied to clipboard");
 }
 
 async function runUpdateMode() {

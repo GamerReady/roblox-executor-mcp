@@ -1266,10 +1266,59 @@ document.addEventListener('click', (e) => {
 
 /* ── Server graph ────────────────────────────────────────── */
 let lastGraphKey = '';
+
+function layoutGraphSide(count, side, w, h, makeNode) {
+    if (count <= 0) return [];
+
+    const cx = w / 2;
+    const cy = h / 2;
+    const yPad = 28;
+    const availableY = Math.max(120, h - yPad * 2);
+    const minRowGap = 44;
+    const maxRows = Math.max(1, Math.floor(availableY / minRowGap) + 1);
+    const sidePad = Math.max(42, Math.min(64, w * 0.05));
+    const hubGap = Math.max(48, Math.min(120, w * 0.12));
+    const outerX = side === 'l' ? sidePad : w - sidePad;
+    const innerX = side === 'l' ? cx - hubGap : cx + hubGap;
+    const availableX = Math.max(1, Math.abs(innerX - outerX));
+    const minColGap = 36;
+    const maxCols = Math.max(1, Math.floor(availableX / minColGap) + 1);
+    const cols = Math.max(1, Math.min(count, maxCols, Math.ceil(count / maxRows)));
+    const rows = Math.ceil(count / cols);
+    const rowGap = rows > 1 ? availableY / (rows - 1) : 0;
+    const colGap = cols > 1 ? Math.min(96, availableX / (cols - 1)) : 0;
+    const density = Math.min(rowGap || 999, colGap || 999);
+    const radius = density < 28 ? 11 : density < 36 ? 13 : density < 44 ? 16 : 20;
+    const fontSize = radius <= 12 ? 8 : radius <= 14 ? 9 : 10;
+    const nodes = [];
+
+    for (let col = 0; col < cols; col++) {
+        const first = col * rows;
+        const rowsInCol = Math.min(rows, count - first);
+        const columnHeight = rowsInCol > 1 ? rowGap * (rowsInCol - 1) : 0;
+        const x = side === 'l' ? outerX + col * colGap : outerX - col * colGap;
+
+        for (let row = 0; row < rowsInCol; row++) {
+            const index = first + row;
+            nodes.push({
+                ...makeNode(index),
+                x,
+                y: cy - columnHeight / 2 + row * rowGap,
+                r: radius,
+                fontSize
+            });
+        }
+    }
+
+    return nodes;
+}
+
 function renderServerGraph() {
     const el = $('serverGraph'); if (!el) return;
     const rc = Math.max(currentRelays, 0), cc = clients.length;
-    const graphKey = rc + ':' + cc + ':' + clients.map(c => c.clientId).join(',');
+    const w = Math.max(320, Math.round(el.clientWidth || 600));
+    const h = Math.max(260, Math.round(el.clientHeight || 300));
+    const graphKey = w + ':' + h + ':' + rc + ':' + cc + ':' + clients.map(c => [c.clientId, c.userId, c.username].join('/')).join(',');
     $('serverStatClients').textContent = cc;
     $('serverStatRelays').textContent = rc;
     const ss = $('serverStatStatus');
@@ -1277,10 +1326,12 @@ function renderServerGraph() {
     ss.className = 'server-stat-value' + (currentConnected ? ' server-stat-value--green' : '');
     if (graphKey === lastGraphKey) return;
     lastGraphKey = graphKey;
-    const w = el.clientWidth || 600, h = 300, cx = w/2, cy = h/2;
-    const leftNodes = [], rightNodes = [];
-    for (let i=0;i<rc;i++) leftNodes.push({x:60,y:cy+(i-(rc-1)/2)*70,label:'R'+(i+1)});
-    for (let i=0;i<cc;i++) rightNodes.push({x:w-60,y:cy+(i-(cc-1)/2)*70,label:clients[i].username.slice(0,2).toUpperCase(),userId:clients[i].userId});
+    const cx = w/2, cy = h/2;
+    const leftNodes = layoutGraphSide(rc, 'l', w, h, (i) => ({ label: 'R' + (i + 1) }));
+    const rightNodes = layoutGraphSide(cc, 'r', w, h, (i) => ({
+        label: getInitials(clients[i].username || ''),
+        userId: clients[i].userId
+    }));
     const colors = ['#a855f7','#f97316','#3b82f6','#22c55e','#ec4899'];
     let s = '<svg viewBox="0 0 '+w+' '+h+'" xmlns="http://www.w3.org/2000/svg"><defs>';
     const allN = [...leftNodes.map((n,i)=>({...n,side:'l',i})), ...rightNodes.map((n,i)=>({...n,side:'r',i}))];
@@ -1290,7 +1341,7 @@ function renderServerGraph() {
         s += '<stop offset="0%" stop-color="'+c+'" stop-opacity="0"/><stop offset="50%" stop-color="'+c+'"/><stop offset="100%" stop-color="'+c+'" stop-opacity="0"/></linearGradient>';
     });
     rightNodes.forEach((n,i) => {
-        s += '<clipPath id="ac'+i+'"><circle cx="'+n.x+'" cy="'+n.y+'" r="18"/></clipPath>';
+        s += '<clipPath id="ac'+i+'"><circle cx="'+n.x+'" cy="'+n.y+'" r="'+Math.max(8, n.r - 2)+'"/></clipPath>';
     });
     s += '</defs>';
     allN.forEach((n,idx) => {
@@ -1315,15 +1366,16 @@ function renderServerGraph() {
     s += '<path d="M0.6 14.8l8.4 4.2 8.4-4.2" fill="none" stroke="var(--text)" stroke-width="1.5" stroke-linejoin="round"/>';
     s += '</g>';
     leftNodes.forEach(n => {
-        s += '<circle cx="'+n.x+'" cy="'+n.y+'" r="20" fill="#111" stroke="var(--border)" stroke-width="1"/>';
-        s += '<text x="'+n.x+'" y="'+(n.y+4)+'" text-anchor="middle" fill="var(--text-secondary)" font-size="10" font-family="var(--mono)">'+n.label+'</text>';
+        s += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+n.r+'" fill="#111" stroke="var(--border)" stroke-width="1"/>';
+        s += '<text x="'+n.x+'" y="'+(n.y+Math.max(3, n.fontSize/2.5))+'" text-anchor="middle" fill="var(--text-secondary)" font-size="'+n.fontSize+'" font-family="var(--mono)">'+escapeHtml(n.label)+'</text>';
     });
     rightNodes.forEach((n,i) => {
-        s += '<circle cx="'+n.x+'" cy="'+n.y+'" r="20" fill="#111" stroke="var(--border)" stroke-width="1"/>';
+        s += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+n.r+'" fill="#111" stroke="var(--border)" stroke-width="1"/>';
         if (n.userId) {
-            s += '<image href="/api/avatar?userId='+n.userId+'" x="'+(n.x-18)+'" y="'+(n.y-18)+'" width="36" height="36" clip-path="url(#ac'+i+')" preserveAspectRatio="xMidYMid slice"/>';
+            const avatarSize = Math.max(16, (n.r - 2) * 2);
+            s += '<image href="/api/avatar?userId='+encodeURIComponent(String(n.userId))+'" x="'+(n.x-avatarSize/2)+'" y="'+(n.y-avatarSize/2)+'" width="'+avatarSize+'" height="'+avatarSize+'" clip-path="url(#ac'+i+')" preserveAspectRatio="xMidYMid slice"/>';
         } else {
-            s += '<text x="'+n.x+'" y="'+(n.y+4)+'" text-anchor="middle" fill="var(--text-secondary)" font-size="10" font-family="var(--mono)">'+n.label+'</text>';
+            s += '<text x="'+n.x+'" y="'+(n.y+Math.max(3, n.fontSize/2.5))+'" text-anchor="middle" fill="var(--text-secondary)" font-size="'+n.fontSize+'" font-family="var(--mono)">'+escapeHtml(n.label)+'</text>';
         }
     });
     if (rc===0 && cc===0) {
@@ -1332,6 +1384,11 @@ function renderServerGraph() {
     s += '</svg>';
     el.innerHTML = s;
 }
+
+window.addEventListener('resize', () => {
+    lastGraphKey = '';
+    if (dashboardMode === 'home' && currentView === 'server') renderServerGraph();
+});
 
 /* ── Settings ────────────────────────────────────────────── */
 /* Toast notifications */
