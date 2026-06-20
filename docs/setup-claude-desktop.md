@@ -3,7 +3,8 @@
 ## 1. Open the config file
 
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **Windows classic:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **Windows MSIX:** `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json`
 
 If the file doesn't exist, create it.
 
@@ -14,23 +15,23 @@ Add or merge the following into your config:
 ```json
 {
   "mcpServers": {
-    "roblox-executor-mcp": {
+    "roblox-mcp": {
       "command": "node",
-      "args": ["/path/to/roblox-executor-mcp/dist/index.js"]
+      "args": ["/path/to/MCPServer/dist/index.js", "--server-name", "roblox-mcp"]
     }
   }
 }
 ```
 
-Replace `/path/to/roblox-executor-mcp` with the actual path where you cloned the repo.
+Replace `/path/to/MCPServer` with the actual path where you cloned the repo.
 
 **Windows example:**
 ```json
 {
   "mcpServers": {
-    "roblox-executor-mcp": {
+    "roblox-mcp": {
       "command": "node",
-      "args": ["C:\\Users\\YourName\\roblox-executor-mcp\\dist\\index.js"]
+      "args": ["C:\\Users\\YourName\\MCPServer\\dist\\index.js", "--server-name", "roblox-mcp"]
     }
   }
 }
@@ -42,9 +43,9 @@ Fully quit and reopen Claude Desktop for changes to take effect.
 
 ## Verify
 
-Click the MCP icon (hammer) in the chat input area. You should see `roblox-executor-mcp` listed with its tools. If it doesn't appear:
+Click the MCP icon (hammer) in the chat input area. You should see `roblox-mcp` listed with its tools. If it doesn't appear:
 
 - Make sure you ran `pnpm install && pnpm run build` first
 - Check that the path in the config is correct
 - Ensure Node.js ≥ 18 is installed
-- Check the logs at `~/Library/Logs/Claude/` (macOS) or `%APPDATA%\Claude\logs\` (Windows)
+- Check the logs at `~/Library/Logs/Claude/` (macOS) or the Claude folders under `%APPDATA%` and `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude` (Windows)

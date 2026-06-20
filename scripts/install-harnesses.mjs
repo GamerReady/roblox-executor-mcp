@@ -36,7 +36,7 @@ const ALL_HARNESSES = [
   { id: "vscode-copilot", name: "VS Code Copilot", group: "Recommended", config: { kind: "vscodeCli" } },
   { id: "amp", name: "Amp", group: "Others", config: { kind: "ampJson", path: vscodeSettingsPath(), experimental: true } },
   { id: "cline", name: "Cline", group: "Others", config: { kind: "mcpServersJson", path: homePath(".cline", "data", "settings", "cline_mcp_settings.json") } },
-  { id: "claude-desktop", name: "Claude Desktop", group: "Others", config: { kind: "mcpServersJson", path: claudeDesktopConfigPath() } },
+  { id: "claude-desktop", name: "Claude Desktop", group: "Others", config: { kind: "mcpServersJson", paths: claudeDesktopConfigPaths() } },
   { id: "deep-agents", name: "Deep Agents", group: "Others", config: { kind: "mcpServersJson", path: homePath(".deepagents", ".mcp.json"), experimental: true } },
   { id: "kimi-cli", name: "Kimi CLI", group: "Others", config: { kind: "mcpServersJson", path: homePath(".kimi", "mcp.json"), experimental: true } },
   { id: "augment", name: "Augment", group: "Others", config: { kind: "mcpServersJson", path: homePath(".augment", "settings.json"), experimental: true } },
@@ -548,7 +548,9 @@ async function configureHarness(harness, serverEntry, results) {
   try {
     switch (harness.config.kind) {
       case "mcpServersJson":
-        await writeMcpServersJson(harness.config.path, serverEntry, harness.config.extra);
+        for (const filePath of configPaths(harness.config)) {
+          await writeMcpServersJson(filePath, serverEntry, harness.config.extra);
+        }
         break;
       case "opencodeJson":
         await writeOpencodeJson(harness.config.path, serverEntry);
@@ -584,7 +586,9 @@ async function configureHarness(harness, serverEntry, results) {
         throw new Error(`Unknown config writer: ${harness.config.kind}`);
     }
     const suffix = harness.config.experimental ? " (experimental path)" : "";
-    results.push({ status: "ok", message: `${harness.name}: configured${harness.config.path ? ` ${harness.config.path}` : ""}${suffix}` });
+    const configuredPaths = configPaths(harness.config);
+    const configuredPathText = configuredPaths.length ? ` ${configuredPaths.join(", ")}` : "";
+    results.push({ status: "ok", message: `${harness.name}: configured${configuredPathText}${suffix}` });
   } catch (error) {
     results.push({ status: "warn", message: `${harness.name}: ${error.message || error}` });
   }
@@ -614,6 +618,11 @@ async function writeMcpServersJson(filePath, serverEntry, extra = {}) {
   json.mcpServers = json.mcpServers && typeof json.mcpServers === "object" ? json.mcpServers : {};
   json.mcpServers[SERVER_NAME] = { ...mcpServerConfig(serverEntry), ...extra };
   await writeJson(filePath, json);
+}
+
+function configPaths(config) {
+  if (Array.isArray(config.paths)) return config.paths;
+  return config.path ? [config.path] : [];
 }
 
 async function writeOpencodeJson(filePath, serverEntry) {
@@ -1119,14 +1128,21 @@ function gooseConfigPath() {
   return homePath(".config", "goose", "config.yaml");
 }
 
-function claudeDesktopConfigPath() {
+function claudeDesktopConfigPaths() {
   if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || homePath("AppData", "Roaming"), "Claude", "claude_desktop_config.json");
+    return uniquePaths([
+      path.join(process.env.APPDATA || homePath("AppData", "Roaming"), "Claude", "claude_desktop_config.json"),
+      path.join(process.env.LOCALAPPDATA || homePath("AppData", "Local"), "Packages", "Claude_pzs8sxrjxfjjc", "LocalCache", "Roaming", "Claude", "claude_desktop_config.json"),
+    ]);
   }
   if (process.platform === "darwin") {
-    return homePath("Library", "Application Support", "Claude", "claude_desktop_config.json");
+    return [homePath("Library", "Application Support", "Claude", "claude_desktop_config.json")];
   }
-  return homePath(".config", "Claude", "claude_desktop_config.json");
+  return [homePath(".config", "Claude", "claude_desktop_config.json")];
+}
+
+function uniquePaths(paths) {
+  return [...new Set(paths)];
 }
 
 function stripJsonComments(input) {
