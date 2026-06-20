@@ -52,6 +52,7 @@ const scriptsCodeMenuBtn = $('scriptsCodeMenuBtn');
 const scriptsCodeMenu = $('scriptsCodeMenu');
 const scriptsCodeSaveBtn = $('scriptsCodeSaveBtn');
 const scriptsCodeView = $('scriptsCodeView');
+const scriptsExportBtn = $('scriptsExportBtn');
 
 function updateCodeOverflowHint() {
     if (!scriptsCodeView) return;
@@ -172,6 +173,7 @@ bindSidebarNav(sidebarNavClient);
 
 topbarBack.addEventListener('click', () => {
     selectedClientId = null;
+    resetScriptsState();
     clientSelectorName.textContent = 'Select Client';
     clientSelectorAvatar.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>';
     setSidebarMode('home');
@@ -255,6 +257,7 @@ function renderNoClientList(filter) {
 
 /* ── Select client ───────────────────────────────────────── */
 function selectClient(clientId) {
+    if (selectedClientId !== clientId) resetScriptsState();
     selectedClientId = clientId;
     const c = clients.find(x => x.clientId === clientId);
     if (c) {
@@ -745,6 +748,103 @@ function formatBytes(bytes) {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+function updateScriptsExportButton() {
+    if (!scriptsExportBtn) return;
+    const canExport = !!selectedClientId && scriptsData.length > 0;
+    scriptsExportBtn.disabled = !canExport;
+    scriptsExportBtn.title = canExport
+        ? 'Export all stored scripts as a zip'
+        : 'No stored scripts to export';
+}
+
+function resetScriptsState() {
+    scriptsData = [];
+    scriptsSearchQuery = '';
+    scriptsBrowsePath = [];
+    scriptsViewingFile = null;
+    scriptsViewingFileHasEmbeddings = false;
+    scriptsScrollPos = 0;
+
+    const search = $('scriptsSearch');
+    if (search) search.value = '';
+    const count = $('scriptsCount');
+    if (count) count.textContent = '0 scripts';
+    const breadcrumb = $('scriptsBreadcrumb');
+    if (breadcrumb) {
+        breadcrumb.innerHTML = '';
+        breadcrumb.style.display = 'none';
+    }
+    const list = $('scriptsFileList');
+    if (list) list.innerHTML = '<div class="logs-empty">No scripts indexed yet</div>';
+    const fileMode = $('scriptsFileMode');
+    const codeMode = $('scriptsCodeMode');
+    if (fileMode) fileMode.style.display = '';
+    if (codeMode) codeMode.style.display = 'none';
+    updateScriptsExportButton();
+}
+
+function filenameFromContentDisposition(header) {
+    if (!header) return null;
+    const utf8 = header.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8) {
+        try { return decodeURIComponent(utf8[1].replace(/^"|"$/g, '')); } catch {}
+    }
+    const quoted = header.match(/filename="([^"]+)"/i);
+    if (quoted) return quoted[1];
+    const bare = header.match(/filename=([^;]+)/i);
+    return bare ? bare[1].trim() : null;
+}
+
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'scripts-export.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function exportScripts() {
+    if (!selectedClientId) return;
+    if (scriptsData.length === 0) {
+        showToast('No stored scripts to export', 'info');
+        updateScriptsExportButton();
+        return;
+    }
+
+    const label = scriptsExportBtn ? scriptsExportBtn.querySelector('span') : null;
+    const originalLabel = label ? label.textContent : '';
+    if (scriptsExportBtn) scriptsExportBtn.disabled = true;
+    if (label) label.textContent = 'Exporting';
+
+    try {
+        const res = await fetch(`/api/scripts/export?clientId=${encodeURIComponent(selectedClientId)}`);
+        if (!res.ok) {
+            let message = 'Failed to export scripts';
+            try {
+                const data = await res.json();
+                if (data.error) message = data.error;
+            } catch {}
+            showToast(message, 'error');
+            return;
+        }
+
+        const blob = await res.blob();
+        const filename = filenameFromContentDisposition(res.headers.get('Content-Disposition'));
+        downloadBlob(blob, filename);
+        showToast(`Exported ${scriptsData.length} scripts as zip`, 'success');
+    } catch(e) {
+        showToast('Failed to export scripts', 'error');
+    } finally {
+        if (label) label.textContent = originalLabel || 'Export';
+        updateScriptsExportButton();
+    }
+}
+
+if (scriptsExportBtn) scriptsExportBtn.addEventListener('click', exportScripts);
+
 async function fetchScripts() {
     if (!selectedClientId) return;
     try {
@@ -760,7 +860,10 @@ async function fetchScripts() {
                 renderScriptsBrowser();
             }
         }
-    } catch(e) {}
+        updateScriptsExportButton();
+    } catch(e) {
+        updateScriptsExportButton();
+    }
 }
 
 // Build tree from flat script list
@@ -1548,6 +1651,7 @@ async function updateStatus() {
         if (selectedClientId && !clients.find(c => c.clientId === selectedClientId)) {
             showToast('Client disconnected', 'error');
             selectedClientId = null;
+            resetScriptsState();
             clientSelectorName.textContent = 'Select Client';
             clientSelectorAvatar.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>';
             setSidebarMode('home');
