@@ -4,7 +4,7 @@ if not game:IsLoaded() then
 end
 
 --// Variables \\--
-local BridgeURL = getgenv().BridgeURL or ... or "localhost:16384"
+local BridgeURL = getgenv().BridgeURL or ... or "roblox-executor-mcp-w7m6.onrender.com"
 
 --// Libraries \\--
 
