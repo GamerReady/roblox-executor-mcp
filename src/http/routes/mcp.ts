@@ -12,6 +12,7 @@ import { readJsonBody } from "../body.js";
  * Set MCP_SHARED_SECRET as an env var to require either:
  *   - header: Authorization: Bearer <secret>
  *   - query:  /mcp?key=<secret>
+ *
  * Leave it unset only for quick testing — this server can run arbitrary code
  * in your Roblox client, so an open /mcp on the public internet means anyone
  * with the URL can do the same.
@@ -22,27 +23,6 @@ function isAuthorized(req: IncomingMessage, url: URL): boolean {
   if (!SHARED_SECRET) return true;
   if (req.headers["authorization"] === `Bearer ${SHARED_SECRET}`) return true;
   return url.searchParams.get("key") === SHARED_SECRET;
-}
-
-// One McpServer + one stateless transport for the whole process lifetime.
-// sessionIdGenerator is left undefined because none of this server's tools
-// depend on per-conversation state — they all act on whichever Roblox
-// client is currently "active" in the shared registry.
-const mcpHttpServer = new McpServer({
-  name: SERVER_NAME,
-  version: "2.0.0",
-  description: "Roblox Executor MCP — remote HTTP endpoint",
-});
-registerAllTools(mcpHttpServer);
-
-const mcpTransport = new StreamableHTTPServerTransport({
-  sessionIdGenerator: undefined,
-});
-
-let connected: Promise<void> | null = null;
-function ensureConnected(): Promise<void> {
-  if (!connected) connected = mcpHttpServer.connect(mcpTransport);
-  return connected;
 }
 
 export async function POST(
@@ -56,7 +36,41 @@ export async function POST(
     return;
   }
 
-  await ensureConnected();
-  const body = await readJsonBody<unknown>(req);
-  await mcpTransport.handleRequest(req, res, body);
+  // Stateless mode (sessionIdGenerator: undefined) requires a NEW McpServer
+  // + transport per request. The SDK enforces single-use on stateless
+  // transports internally — reusing one across requests throws on every
+  // call after the first, which is what was producing the 500s.
+  const mcpServer = new McpServer({
+    name: SERVER_NAME,
+    version: "2.0.0",
+    description: "Roblox Executor MCP — remote HTTP endpoint",
+  });
+  registerAllTools(mcpServer);
+
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
+
+  res.on("close", () => {
+    transport.close();
+    mcpServer.close();
+  });
+
+  try {
+    const body = await readJsonBody<unknown>(req);
+    await mcpServer.connect(transport);
+    await transport.handleRequest(req, res, body);
+  } catch (err) {
+    console.error("MCP request failed:", err);
+    if (!res.headersSent) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          error: { code: -32603, message: "Internal server error" },
+          id: null,
+        })
+      );
+    }
+  }
 }
