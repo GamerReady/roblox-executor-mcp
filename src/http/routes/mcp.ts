@@ -1,15 +1,10 @@
-import type { IncomingMessage, ServerResponse } from "http";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { SERVER_NAME } from "../../config.js";
-import { registerAllTools } from "../../tools/index.js";
-import { readJsonBody } from "../body.js";
-
 export async function POST(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL
 ): Promise<void> {
+  req.headers["accept"] = "application/json, text/event-stream"; // 👈 moved to top
+
   const mcpServer = new McpServer({
     name: SERVER_NAME,
     version: "2.0.0",
@@ -29,7 +24,6 @@ export async function POST(
   try {
     const body = await readJsonBody<unknown>(req);
     await mcpServer.connect(transport);
-    req.headers["accept"] = "application/json, text/event-stream";
     await transport.handleRequest(req, res, body);
   } catch (err) {
     console.error("MCP request failed:", err);
