@@ -9,8 +9,9 @@ export async function POST(
   res: ServerResponse,
   url: URL
 ): Promise<void> {
-  req.headers["Accept"] = "application/json, text/event-stream";
   req.headers["accept"] = "application/json, text/event-stream";
+  console.log("Headers after override:", req.headers["accept"]);
+  console.log("Full headers:", req.headers);
 
   const mcpServer = new McpServer({
     name: SERVER_NAME,
