@@ -29,6 +29,7 @@ export async function POST(
   try {
     const body = await readJsonBody<unknown>(req);
     await mcpServer.connect(transport);
+    req.headers["accept"] = "application/json, text/event-stream";
     await transport.handleRequest(req, res, body);
   } catch (err) {
     console.error("MCP request failed:", err);
