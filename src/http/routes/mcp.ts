@@ -9,7 +9,17 @@ export async function POST(
   res: ServerResponse,
   url: URL
 ): Promise<void> {
-  req.headers["accept"] = "application/json, text/event-stream";
+  // Force the Accept header by wrapping the request
+  const originalHeaders = req.headers;
+  Object.defineProperty(req, 'headers', {
+    get() {
+      return {
+        ...originalHeaders,
+        'accept': 'application/json, text/event-stream'
+      };
+    },
+    configurable: true
+  });
 
   const mcpServer = new McpServer({
     name: SERVER_NAME,
