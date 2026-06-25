@@ -4,30 +4,27 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { SERVER_NAME } from "../../config.js";
 import { registerAllTools } from "../../tools/index.js";
 
+function setCORSHeaders(res: ServerResponse): void {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization");
+  res.setHeader("Access-Control-Expose-Headers", "Content-Type");
+  res.setHeader("Access-Control-Max-Age", "86400");
+}
+
 export async function POST(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL
 ): Promise<void> {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
-
-  if (req.method === "OPTIONS") {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-
-  req.headers["accept"] = "application/json, text/event-stream";
-  console.log("Headers after override:", req.headers["accept"]);
-  console.log("Full headers:", req.headers);
+  setCORSHeaders(res);
 
   const mcpServer = new McpServer({
     name: SERVER_NAME,
     version: "2.0.0",
     description: "Roblox Executor MCP — remote HTTP endpoint",
   });
+
   registerAllTools(mcpServer);
 
   const transport = new StreamableHTTPServerTransport({
