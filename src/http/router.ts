@@ -46,11 +46,6 @@ async function walk(dir: string): Promise<string[]> {
 
 const GROUP_SEGMENT = /^\(.+\)$/;
 
-/**
- * Derive a URL pathname from the file's location under routesDir.
- * Directory segments wrapped in parens — e.g. `(auth)` — are groups and
- * are dropped from the URL, matching Next.js behavior.
- */
 function fileToUrlPath(file: string): string {
   const rel = path.relative(routesDir, file);
   const parsed = path.parse(rel);
@@ -126,6 +121,25 @@ export function loadRoutes(): Promise<void> {
 
 export async function dispatchHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url || "/", `http://localhost`);
+
+  if (req.method === "OPTIONS") {
+    const matchingRoute = httpRoutes.find((route) => route.path === url.pathname);
+    if (matchingRoute) {
+      const allowedMethods = httpRoutes
+        .filter((route) => route.path === url.pathname)
+        .map((route) => route.method)
+        .join(", ");
+
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", `${allowedMethods}, OPTIONS`);
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization");
+      res.setHeader("Access-Control-Expose-Headers", "Content-Type");
+      res.setHeader("Access-Control-Max-Age", "86400");
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+  }
 
   for (const route of httpRoutes) {
     if (route.path === url.pathname && route.method === req.method) {
