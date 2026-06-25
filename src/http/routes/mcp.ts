@@ -9,6 +9,16 @@ export async function POST(
   res: ServerResponse,
   url: URL
 ): Promise<void> {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   req.headers["accept"] = "application/json, text/event-stream";
   console.log("Headers after override:", req.headers["accept"]);
   console.log("Full headers:", req.headers);
